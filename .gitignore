@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+lib/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Expo
+.expo/
+.expo-shared/
+web-build/
+
+# React Native
+.android/
+.ios/
+
+# Coverage
+coverage/
+
+# Prisma
+prisma/dev.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.pid
+
+# Misc
+.tmp/
+.cache/
+
+# Expo assets (binary placeholders)
+apps/mobile/assets/*.png
