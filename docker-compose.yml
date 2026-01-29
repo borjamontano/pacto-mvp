@@ -1,0 +1,32 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: pacto
+      POSTGRES_PASSWORD: pacto
+      POSTGRES_DB: pacto
+    ports:
+      - "5432:5432"
+    volumes:
+      - pacto_db:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://pacto:pacto@db:5432/pacto
+      JWT_ACCESS_SECRET: dev-access
+      JWT_REFRESH_SECRET: dev-refresh
+      API_PORT: 3001
+      API_BASE_URL: http://localhost:3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      - db
+    command: sh -c "pnpm prisma:migrate && pnpm prisma:seed && pnpm start"
+
+volumes:
+  pacto_db:
