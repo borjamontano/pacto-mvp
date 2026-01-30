@@ -1,115 +1,133 @@
-import axios from 'axios';
-import Constants from 'expo-constants';
-import { storage } from '../utils/storage';
-import { useAuthStore } from '../stores/authStore';
+// apps/mobile/src/services/api.ts
 
-const baseURL = Constants.expoConfig?.extra?.apiUrl ?? process.env.EXPO_PUBLIC_API_URL;
+const baseURL = process.env.EXPO_PUBLIC_API_URL;
 
-export const api = axios.create({
-  baseURL: `${baseURL}/api/v1`,
-});
-
-api.interceptors.request.use(async (config) => {
-  const token = await storage.getAccessToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-let isRefreshing = false;
-let refreshPromise: Promise<string | null> | null = null;
-
-async function refreshToken(): Promise<string | null> {
-  if (isRefreshing && refreshPromise) return refreshPromise;
-  isRefreshing = true;
-  refreshPromise = (async () => {
-    const currentRefreshToken = await storage.getRefreshToken();
-    if (!currentRefreshToken) return null;
-    try {
-      const response = await axios.post(`${baseURL}/api/v1/auth/refresh`, {
-        refreshToken: currentRefreshToken,
-      });
-      const { accessToken, refreshToken: newRefreshToken } = response.data;
-      await storage.setAccessToken(accessToken);
-      await storage.setRefreshToken(newRefreshToken);
-      useAuthStore.getState().setTokens(accessToken, newRefreshToken);
-      return accessToken;
-    } catch (error) {
-      await useAuthStore.getState().logout();
-      return null;
-    } finally {
-      isRefreshing = false;
-      refreshPromise = null;
-    }
-  })();
-  return refreshPromise;
+if (!baseURL) {
+  console.warn(
+    "Missing EXPO_PUBLIC_API_URL. Did you set it in apps/mobile/.env ?"
+  );
 }
 
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      const newToken = await refreshToken();
-      if (newToken) {
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        return api(originalRequest);
-      }
-    }
-    return Promise.reject(error);
-  },
-);
+type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
-export type AuthResponse = {
-  user: { id: string; email: string; name?: string };
-  accessToken: string;
-  refreshToken: string;
+let accessToken: string | null = null;
+let refreshToken: string | null = null;
+
+export function setTokens(tokens: { accessToken: string; refreshToken: string }) {
+  accessToken = tokens.accessToken;
+  refreshToken = tokens.refreshToken;
+}
+
+export function clearTokens() {
+  accessToken = null;
+  refreshToken = null;
+}
+
+async function request<T>(
+  method: HttpMethod,
+  path: string,
+  body?: unknown,
+  retry = true
+): Promise<T> {
+  const url = `${baseURL}${path}`;
+
+  const res = await fetch(url, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  // ✅ if unauthorized, try refresh token once
+  if (res.status === 401 && retry && refreshToken) {
+    const refreshed = await refreshAccessToken();
+
+    if (refreshed) {
+      return request<T>(method, path, body, false);
+    }
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Request failed: ${res.status}`);
+  }
+
+  // no content
+  if (res.status === 204) return undefined as T;
+
+  return res.json();
+}
+
+async function refreshAccessToken(): Promise<boolean> {
+  if (!refreshToken) return false;
+
+  try {
+    const res = await fetch(`${baseURL}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    if (!res.ok) return false;
+
+    const data = await res.json();
+
+    // asumimos que devuelve esto:
+    // { accessToken: "...", refreshToken: "..." }
+    setTokens({
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+    });
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const api = {
+  get: <T>(path: string) => request<T>("GET", path),
+  post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
+  patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
+  delete: <T>(path: string) => request<T>("DELETE", path),
 };
 
 export const authApi = {
-  register: (payload: { email: string; password: string; name: string }) =>
-    api.post<AuthResponse>('/auth/register', payload),
-  login: (payload: { email: string; password: string }) =>
-    api.post<AuthResponse>('/auth/login', payload),
-  me: () => api.get<{ id: string; email: string }>('/auth/me'),
-  logout: () => api.post('/auth/logout'),
+  login: (body: { email: string; password: string }) =>
+    api.post<{
+      accessToken: string;
+      refreshToken: string;
+      user: { id: string; email: string };
+    }>("/auth/login", body),
+
+  register: (body: { email: string; password: string; name: string }) =>
+    api.post<{
+      accessToken: string;
+      refreshToken: string;
+      user: { id: string; email: string };
+    }>("/auth/register", body),
+
+  refresh: (body: { refreshToken: string }) =>
+    api.post<{
+      accessToken: string;
+      refreshToken: string;
+    }>("/auth/refresh", body),
 };
 
 export const householdApi = {
-  list: () => api.get('/households'),
-  create: (payload: { name: string }) => api.post('/households', payload),
-  join: (payload: { inviteCode: string }) => api.post('/households/join', payload),
-  invite: (id: string) => api.post(`/households/${id}/invite`),
+  create: (body: { name: string }) =>
+    api.post('/households', body),
+
+  list: () =>
+    api.get('/households'),
+
+  getById: (id: string) =>
+    api.get(`/households/${id}`),
+
+  invite: (id: string) =>
+    api.post(`/households/${id}/invite`),
 };
 
-export const pactsApi = {
-  list: (householdId: string, filter: string) =>
-    api.get(`/households/${householdId}/pacts`, { params: { filter } }),
-  get: (householdId: string, pactId: string) =>
-    api.get(`/households/${householdId}/pacts/${pactId}`),
-  create: (householdId: string, payload: Record<string, unknown>) =>
-    api.post(`/households/${householdId}/pacts`, payload),
-  update: (householdId: string, pactId: string, payload: Record<string, unknown>) =>
-    api.patch(`/households/${householdId}/pacts/${pactId}`, payload),
-  remove: (householdId: string, pactId: string) =>
-    api.delete(`/households/${householdId}/pacts/${pactId}`),
-  assignToMe: (householdId: string, pactId: string) =>
-    api.post(`/households/${householdId}/pacts/${pactId}/assign-to-me`),
-  markDone: (householdId: string, pactId: string) =>
-    api.post(`/households/${householdId}/pacts/${pactId}/mark-done`),
-  confirm: (householdId: string, pactId: string) =>
-    api.post(`/households/${householdId}/pacts/${pactId}/confirm`),
-};
 
-export const activityApi = {
-  list: (householdId: string, cursor?: string) =>
-    api.get(`/households/${householdId}/activity`, { params: { cursor } }),
-};
-
-export const devicesApi = {
-  register: (payload: { expoPushToken: string; platform: 'ios' | 'android' }) =>
-    api.post('/devices/register-token', payload),
-  unregister: () => api.delete('/devices/unregister-token'),
-};

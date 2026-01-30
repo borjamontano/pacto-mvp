@@ -7,10 +7,14 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "pnpm -r --parallel dev",
-    "lint": "pnpm -r lint",
-    "format": "pnpm -r format",
-    "build": "pnpm -r build",
-    "test": "pnpm -r test"
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "node dist/main.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:seed": "ts-node prisma/seed.ts"
+  },
+  "dependencies": {
+    "@babel/runtime": "^7.28.6"
   }
 }

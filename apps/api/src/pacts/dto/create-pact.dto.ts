@@ -2,7 +2,7 @@ import { IsBoolean, IsDateString, IsOptional, IsString } from 'class-validator';
 
 export class CreatePactDto {
   @IsString()
-  title: string;
+  title!: string;
 
   @IsOptional()
   @IsString()

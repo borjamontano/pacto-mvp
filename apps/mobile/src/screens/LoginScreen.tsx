@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput } from 'react-native';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { authApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
@@ -8,16 +8,23 @@ export function LoginScreen({ navigation }: { navigation: any }) {
   const [email, setEmail] = useState('demo@pacto.app');
   const [password, setPassword] = useState('demo1234');
   const [error, setError] = useState('');
+
   const setTokens = useAuthStore((state) => state.setTokens);
   const setUser = useAuthStore((state) => state.setUser);
 
   const handleLogin = async () => {
     setError('');
+
     try {
-      const response = await authApi.login({ email, password });
-      await setTokens(response.data.accessToken, response.data.refreshToken);
-      setUser({ id: response.data.user.id, email: response.data.user.email });
-    } catch (err) {
+      const data = await authApi.login({ email, password });
+
+      // ✅ Store tokens (assumes store signature: setTokens(access, refresh))
+      setTokens(data.accessToken, data.refreshToken);
+
+      // ✅ Store minimal user
+      setUser({ id: data.user.id, email: data.user.email });
+    } catch (err: any) {
+      console.log('LOGIN ERROR:', err?.message ?? err);
       setError('No pudimos iniciar sesión.');
     }
   };
@@ -26,12 +33,31 @@ export function LoginScreen({ navigation }: { navigation: any }) {
     <ScreenContainer>
       <Text style={styles.title}>PACTO</Text>
       <Text style={styles.subtitle}>Tasks that get confirmed, not assumed.</Text>
-      <TextInput style={styles.input} placeholder="Email" autoCapitalize="none" value={email} onChangeText={setEmail} />
-      <TextInput style={styles.input} placeholder="Contraseña" secureTextEntry value={password} onChangeText={setPassword} />
+
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="email-address"
+        value={email}
+        onChangeText={setEmail}
+      />
+
+      <TextInput
+        style={styles.input}
+        placeholder="Contraseña"
+        secureTextEntry
+        value={password}
+        onChangeText={setPassword}
+      />
+
       {error ? <Text style={styles.error}>{error}</Text> : null}
+
       <Pressable style={styles.button} onPress={handleLogin}>
         <Text style={styles.buttonText}>Entrar</Text>
       </Pressable>
+
       <Pressable onPress={() => navigation.navigate('Register')}>
         <Text style={styles.link}>Crear cuenta</Text>
       </Pressable>

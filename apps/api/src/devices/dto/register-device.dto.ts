@@ -3,8 +3,8 @@ import { DevicePlatform } from '@prisma/client';
 
 export class RegisterDeviceDto {
   @IsString()
-  expoPushToken: string;
+  expoPushToken!: string;
 
   @IsEnum(DevicePlatform)
-  platform: DevicePlatform;
+  platform!: DevicePlatform;
 }

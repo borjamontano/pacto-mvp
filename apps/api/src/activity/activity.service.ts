@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PactActivityType } from '@prisma/client';
+import { PactActivityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export type ActivityPayload = Record<string, unknown>;
@@ -21,7 +21,8 @@ export class ActivityService {
         householdId: params.householdId,
         byUserId: params.byUserId,
         type: params.type,
-        payload: params.payload ?? {},
+        payload: (params.payload ?? {}) as Prisma.InputJsonValue,
+
       },
     });
   }
